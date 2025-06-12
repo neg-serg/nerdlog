@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -91,7 +92,8 @@ func (s *ShellTransportSSHBin) doConnect(
 	}
 	logger.Infof("Executing external ssh command: %q", sshCmdDebug)
 
-	cmd := exec.Command("ssh", sshArgs...)
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		res.Err = errors.Annotatef(err, "getting stdin pipe")
@@ -177,6 +179,8 @@ func (s *ShellTransportSSHBin) doConnect(
 			stdin:  stdin,
 			stdout: clientStdoutR,
 			stderr: stderr,
+
+			ctxCancel: cancel,
 		}
 		return res
 
@@ -198,6 +202,8 @@ type ShellConnSSHBin struct {
 	stdin  io.WriteCloser
 	stdout io.Reader
 	stderr io.Reader
+
+	ctxCancel context.CancelFunc
 }
 
 func (s *ShellConnSSHBin) Stdin() io.Writer {
@@ -213,5 +219,12 @@ func (s *ShellConnSSHBin) Stderr() io.Reader {
 }
 
 func (s *ShellConnSSHBin) Close() {
+	// Close stdin; normally this is enough for the external process to finish
+	// gracefully.
 	s.stdin.Close()
+
+	// Cancel context too, so the external process gets killed (closing stdin is
+	// not always enough; e.g. after the OS gets suspended for long enough time,
+	// and resumed, the connection keeps hanging without it).
+	s.ctxCancel()
 }
