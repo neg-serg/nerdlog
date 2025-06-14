@@ -156,7 +156,7 @@ func (st *ShellTransportSSHLib) doConnect(
 		return res
 	}
 
-	res.Conn = &ShellConnSSH{
+	res.Conn = &ShellConnSSHLib{
 		sshClient:  sshClient,
 		sshSession: sshSession,
 
@@ -389,8 +389,8 @@ func (st *ShellTransportSSHLib) getJumphostClient(resCh chan<- ShellConnUpdate, 
 	return jh, nil
 }
 
-// ShellConnSSH implements ShellConn for SSH.
-type ShellConnSSH struct {
+// ShellConnSSHLib implements ShellConn for SSH.
+type ShellConnSSHLib struct {
 	sshClient  *ssh.Client
 	sshSession *ssh.Session
 
@@ -399,22 +399,22 @@ type ShellConnSSH struct {
 	stderrBuf io.Reader
 }
 
-var _ ShellConn = &ShellConnSSH{}
+var _ ShellConn = &ShellConnSSHLib{}
 
-func (c *ShellConnSSH) Stdin() io.Writer {
+func (c *ShellConnSSHLib) Stdin() io.Writer {
 	return c.stdinBuf
 }
 
-func (c *ShellConnSSH) Stdout() io.Reader {
+func (c *ShellConnSSHLib) Stdout() io.Reader {
 	return c.stdoutBuf
 }
 
-func (c *ShellConnSSH) Stderr() io.Reader {
+func (c *ShellConnSSHLib) Stderr() io.Reader {
 	return c.stderrBuf
 }
 
 // Close closes underlying SSH connection.
-func (c *ShellConnSSH) Close() {
+func (c *ShellConnSSHLib) Close() {
 	c.stdinBuf.Close()
 	c.sshSession.Close()
 	c.sshClient.Close()
