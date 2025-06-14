@@ -99,14 +99,14 @@ type resolverTestCase struct {
 	// input is the logstream spec string that we're feeding to Resolve()
 	input string
 
-	wantErr       string
-	wantErrSSHBin string
+	wantErr          string
+	wantErrCustomCmd string
 	// wantStreams is the expected streams when UseExternalSSH is false.
 	wantStreams map[string]LogStream
-	// wantStreamsSSHBin is the expected streams when UseExternalSSH is true. If
+	// wantStreamsCustomCmd is the expected streams when UseExternalSSH is true. If
 	// nil, then wantStreams will be used (so the expectation is that
 	// UseExternalSSH makes not difference).
-	wantStreamsSSHBin map[string]LogStream
+	wantStreamsCustomCmd map[string]LogStream
 }
 
 func runResolverTestCase(t *testing.T, tc resolverTestCase) {
@@ -118,11 +118,11 @@ func runResolverTestCase(t *testing.T, tc resolverTestCase) {
 		SSHConfig:        tc.sshConfig,
 	})
 
-	resolverSSHBin := NewLStreamsResolver(LStreamsResolverParams{
-		CurOSUser:        tc.osUser,
-		UseExternalSSH:   true,
-		ConfigLogStreams: tc.configLogStreams,
-		SSHConfig:        tc.sshConfig,
+	resolverCustomCmd := NewLStreamsResolver(LStreamsResolverParams{
+		CurOSUser:          tc.osUser,
+		CustomShellCommand: DefaultSSHShellCommand,
+		ConfigLogStreams:   tc.configLogStreams,
+		SSHConfig:          tc.sshConfig,
 	})
 
 	gotStreamsSSHLib, err := resolverSSHLib.Resolve(tc.input)
@@ -134,23 +134,23 @@ func runResolverTestCase(t *testing.T, tc resolverTestCase) {
 		assert.Equal(t, tc.wantStreams, gotStreamsSSHLib)
 	}
 
-	gotStreamsSSHBin, err := resolverSSHBin.Resolve(tc.input)
+	gotStreamsCustomCmd, err := resolverCustomCmd.Resolve(tc.input)
 
-	wantErrSSHBin := tc.wantErrSSHBin
-	if wantErrSSHBin == "" {
-		wantErrSSHBin = tc.wantErr
+	wantErrCustomCmd := tc.wantErrCustomCmd
+	if wantErrCustomCmd == "" {
+		wantErrCustomCmd = tc.wantErr
 	}
 
-	wantStreamsSSHBin := tc.wantStreamsSSHBin
-	if wantStreamsSSHBin == nil {
-		wantStreamsSSHBin = tc.wantStreams
+	wantStreamsCustomCmd := tc.wantStreamsCustomCmd
+	if wantStreamsCustomCmd == nil {
+		wantStreamsCustomCmd = tc.wantStreams
 	}
 
-	if wantErrSSHBin != "" {
-		assert.EqualError(t, err, wantErrSSHBin)
+	if wantErrCustomCmd != "" {
+		assert.EqualError(t, err, wantErrCustomCmd)
 	} else {
 		assert.NoError(t, err, "unexpected error with UseExternalSSH")
-		assert.Equal(t, wantStreamsSSHBin, gotStreamsSSHBin)
+		assert.Equal(t, wantStreamsCustomCmd, gotStreamsCustomCmd)
 	}
 }
 
@@ -174,12 +174,15 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myserver.com": {
 					Name: "myserver.com",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "myserver.com",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -204,13 +207,16 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myuser@myserver.com": {
 					Name: "myuser@myserver.com",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "myserver.com",
-							User: "myuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+								"NLUSER": "myuser",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -235,14 +241,17 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myuser@myserver.com:777": {
 					Name: "myuser@myserver.com:777",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "myserver.com",
-							Port: "777",
-							User: "myuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+								"NLPORT": "777",
+								"NLUSER": "myuser",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -267,13 +276,16 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myserver.com:777": {
 					Name: "myserver.com:777",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "myserver.com",
-							Port: "777",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+								"NLPORT": "777",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -298,14 +310,17 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 					LogFiles: []string{"/var/log/syslog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myuser@myserver.com:22:/var/log/syslog": {
 					Name: "myuser@myserver.com:22:/var/log/syslog",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "myserver.com",
-							Port: "22",
-							User: "myuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+								"NLPORT": "22",
+								"NLUSER": "myuser",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/syslog", "auto"},
@@ -330,14 +345,17 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 					LogFiles: []string{"/var/log/auth.log", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myuser@myserver.com:22:/var/log/auth.log": {
 					Name: "myuser@myserver.com:22:/var/log/auth.log",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "myserver.com",
-							Port: "22",
-							User: "myuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+								"NLPORT": "22",
+								"NLUSER": "myuser",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/auth.log", "auto"},
@@ -362,14 +380,17 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 					LogFiles: []string{"/var/log/mylog_last", "/var/log/mylog_prev"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myuser@myserver.com:22:/var/log/mylog_last:/var/log/mylog_prev": {
 					Name: "myuser@myserver.com:22:/var/log/mylog_last:/var/log/mylog_prev",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "myserver.com",
-							Port: "22",
-							User: "myuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+								"NLPORT": "22",
+								"NLUSER": "myuser",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/mylog_last", "/var/log/mylog_prev"},
@@ -377,18 +398,18 @@ func TestLStreamsResolverSingleEntryNoGlob(t *testing.T) {
 			},
 		},
 		{
-			name:              "empty string is allowed",
-			osUser:            "myuser",
-			input:             "",
-			wantStreams:       map[string]LogStream{},
-			wantStreamsSSHBin: map[string]LogStream{},
+			name:                 "empty string is allowed",
+			osUser:               "myuser",
+			input:                "",
+			wantStreams:          map[string]LogStream{},
+			wantStreamsCustomCmd: map[string]LogStream{},
 		},
 		{
-			name:              "empty string with whitespaces is allowed",
-			osUser:            "myuser",
-			input:             "", // TODO it's the same as previous case
-			wantStreams:       map[string]LogStream{},
-			wantStreamsSSHBin: map[string]LogStream{},
+			name:                 "empty string with whitespaces is allowed",
+			osUser:               "myuser",
+			input:                "", // TODO it's the same as previous case
+			wantStreams:          map[string]LogStream{},
+			wantStreamsCustomCmd: map[string]LogStream{},
 		},
 	}
 
@@ -431,12 +452,15 @@ func TestLStreamsResolverMultipleEntriesNoGlob(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"host1.com": {
 					Name: "host1.com",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host1.com",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host1.com",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -444,8 +468,11 @@ func TestLStreamsResolverMultipleEntriesNoGlob(t *testing.T) {
 				"host2.com": {
 					Name: "host2.com",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host2.com",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host2.com",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -482,14 +509,17 @@ func TestLStreamsResolverMultipleEntriesNoGlob(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"alice@foo.com:2200:/a.log:/b.log": {
 					Name: "alice@foo.com:2200:/a.log:/b.log",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "foo.com",
-							Port: "2200",
-							User: "alice",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "foo.com",
+								"NLPORT": "2200",
+								"NLUSER": "alice",
+							},
 						},
 					},
 					LogFiles: []string{"/a.log", "/b.log"},
@@ -497,9 +527,12 @@ func TestLStreamsResolverMultipleEntriesNoGlob(t *testing.T) {
 				"bob@bar.com": {
 					Name: "bob@bar.com",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "bar.com",
-							User: "bob",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "bar.com",
+								"NLUSER": "bob",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -580,14 +613,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/mylog_1", "/from/nerdlog/config/mylog_2"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myhost-01": {
 					Name: "myhost-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-from-nerdlog-config-01.com",
-							Port: "1001",
-							User: "user-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-from-nerdlog-config-01.com",
+								"NLPORT": "1001",
+								"NLUSER": "user-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/mylog_1", "auto"},
@@ -595,10 +631,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"myhost-02": {
 					Name: "myhost-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-from-nerdlog-config-02.com",
-							Port: "1002",
-							User: "user-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-from-nerdlog-config-02.com",
+								"NLPORT": "1002",
+								"NLUSER": "user-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/mylog_1", "/from/nerdlog/config/mylog_2"},
@@ -606,10 +645,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"myhost-03": {
 					Name: "myhost-03",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-from-nerdlog-config-03.com",
-							Port: "1003",
-							User: "user-from-nerdlog-config-03",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-from-nerdlog-config-03.com",
+								"NLPORT": "1003",
+								"NLUSER": "user-from-nerdlog-config-03",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/mylog_1", "/from/nerdlog/config/mylog_2"},
@@ -686,14 +728,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"myhost-01": {
 					Name: "myhost-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-from-nerdlog-config-01.com",
-							Port: "1001",
-							User: "user-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-from-nerdlog-config-01.com",
+								"NLPORT": "1001",
+								"NLUSER": "user-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/mylog_1", "auto"},
@@ -701,10 +746,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"myhost-02": {
 					Name: "myhost-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-from-nerdlog-config-02.com",
-							Port: "1002",
-							User: "user-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-from-nerdlog-config-02.com",
+								"NLPORT": "1002",
+								"NLUSER": "user-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/mylog_1", "/from/nerdlog/config/mylog_2"},
@@ -712,10 +760,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"myhost-03": {
 					Name: "myhost-03",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-from-nerdlog-config-03.com",
-							Port: "1003",
-							User: "user-from-nerdlog-config-03",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-from-nerdlog-config-03.com",
+								"NLPORT": "1003",
+								"NLUSER": "user-from-nerdlog-config-03",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/mylog_1", "/from/nerdlog/config/mylog_2"},
@@ -724,10 +775,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-01": {
 					Name: "foo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -735,10 +789,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-02": {
 					Name: "foo-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "2002",
-							User: "user-foo-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "2002",
+								"NLUSER": "user-foo-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -779,13 +836,16 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"bar-01": {
 					Name: "bar-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-bar-from-nerdlog-config-01.com",
-							User: "user-bar-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-bar-from-nerdlog-config-01.com",
+								"NLUSER": "user-bar-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -793,9 +853,12 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"bar-02": {
 					Name: "bar-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-bar-from-nerdlog-config-02.com",
-							User: "user-bar-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-bar-from-nerdlog-config-02.com",
+								"NLUSER": "user-bar-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -836,14 +899,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"foo-01:123": {
 					Name: "foo-01:123",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "123",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "123",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -851,10 +917,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-02:123": {
 					Name: "foo-02:123",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "123",
-							User: "user-foo-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "123",
+								"NLUSER": "user-foo-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -895,14 +964,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"customuser@foo-01": {
 					Name: "customuser@foo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "customuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "customuser",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -910,10 +982,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"customuser@foo-02": {
 					Name: "customuser@foo-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "2002",
-							User: "customuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "2002",
+								"NLUSER": "customuser",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -954,14 +1029,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/var/log/custom", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"foo-01::/var/log/custom": {
 					Name: "foo-01::/var/log/custom",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "auto"},
@@ -969,10 +1047,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-02::/var/log/custom": {
 					Name: "foo-02::/var/log/custom",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "2002",
-							User: "user-foo-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "2002",
+								"NLUSER": "user-foo-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "auto"},
@@ -1013,14 +1094,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/var/log/custom", "/var/log/custom_prev"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"foo-01::/var/log/custom:/var/log/custom_prev": {
 					Name: "foo-01::/var/log/custom:/var/log/custom_prev",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "/var/log/custom_prev"},
@@ -1028,10 +1112,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-02::/var/log/custom:/var/log/custom_prev": {
 					Name: "foo-02::/var/log/custom:/var/log/custom_prev",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "2002",
-							User: "user-foo-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "2002",
+								"NLUSER": "user-foo-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "/var/log/custom_prev"},
@@ -1072,14 +1159,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/var/log/custom", "/var/log/custom_prev"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"customuser@foo-01:444:/var/log/custom:/var/log/custom_prev": {
 					Name: "customuser@foo-01:444:/var/log/custom:/var/log/custom_prev",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "444",
-							User: "customuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "444",
+								"NLUSER": "customuser",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "/var/log/custom_prev"},
@@ -1087,10 +1177,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"customuser@foo-02:444:/var/log/custom:/var/log/custom_prev": {
 					Name: "customuser@foo-02:444:/var/log/custom:/var/log/custom_prev",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "444",
-							User: "customuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "444",
+								"NLUSER": "customuser",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "/var/log/custom_prev"},
@@ -1119,14 +1212,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"foo-01": {
 					Name: "foo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -1155,14 +1251,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"customuser@foo-01": {
 					Name: "customuser@foo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "customuser",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "customuser",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -1228,14 +1327,17 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/var/log/custom", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"foo-01": {
 					Name: "foo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -1243,10 +1345,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-02": {
 					Name: "foo-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "2002",
-							User: "user-foo-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "2002",
+								"NLUSER": "user-foo-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -1255,10 +1360,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-01::/var/log/custom": {
 					Name: "foo-01::/var/log/custom",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "auto"},
@@ -1266,10 +1374,13 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"foo-02::/var/log/custom": {
 					Name: "foo-02::/var/log/custom",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "2002",
-							User: "user-foo-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "2002",
+								"NLUSER": "user-foo-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/custom", "auto"},
@@ -1298,13 +1409,16 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"realhost.com": {
 					Name: "realhost.com",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "realhost.com",
-							User: "user-from-nerdlog-config",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "realhost.com",
+								"NLUSER": "user-from-nerdlog-config",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1346,12 +1460,15 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/bazlog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"baz-01": {
 					Name: "baz-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "baz-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "baz-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/bazlog", "auto"},
@@ -1359,8 +1476,11 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 				"baz-02": {
 					Name: "baz-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "baz-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "baz-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/bazlog", "auto"},
@@ -1375,8 +1495,8 @@ func TestLStreamsResolverGlobOnlyNerdlogConfig(t *testing.T) {
 			configLogStreams: testConfigLogStreams1,
 			input:            "mismatching-*",
 
-			wantErr:       "parsing entry #1 (mismatching-*): glob \"mismatching-*\" didn't match anything (having address \"mismatching-*:22\")",
-			wantErrSSHBin: "parsing entry #1 (mismatching-*): glob \"mismatching-*\" didn't match anything (having address \"mismatching-*:\")",
+			wantErr:          "parsing entry #1 (mismatching-*): glob \"mismatching-*\" didn't match anything (having address \"mismatching-*:22\")",
+			wantErrCustomCmd: "parsing entry #1 (mismatching-*): glob \"mismatching-*\" didn't match anything (having address \"mismatching-*:\")",
 		},
 	}
 
@@ -1422,12 +1542,15 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"sshfoo-01": {
 					Name: "sshfoo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshfoo-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshfoo-01",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1435,8 +1558,11 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 				"sshfoo-02": {
 					Name: "sshfoo-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshfoo-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshfoo-02",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1501,12 +1627,15 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"sshfoo-01": {
 					Name: "sshfoo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshfoo-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshfoo-01",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1514,8 +1643,11 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 				"sshfoo-02": {
 					Name: "sshfoo-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshfoo-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshfoo-02",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1524,8 +1656,11 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 				"sshbar-01": {
 					Name: "sshbar-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshbar-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshbar-01",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1533,8 +1668,11 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 				"sshbar-02": {
 					Name: "sshbar-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshbar-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshbar-02",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1575,12 +1713,15 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 					LogFiles: []string{"/var/log/auth.log", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"sshfoo-01::/var/log/auth.log": {
 					Name: "sshfoo-01::/var/log/auth.log",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshfoo-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshfoo-01",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/auth.log", "auto"},
@@ -1588,8 +1729,11 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 				"sshfoo-02::/var/log/auth.log": {
 					Name: "sshfoo-02::/var/log/auth.log",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshfoo-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshfoo-02",
+							},
 						},
 					},
 					LogFiles: []string{"/var/log/auth.log", "auto"},
@@ -1618,12 +1762,15 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"sshfoo-02": {
 					Name: "sshfoo-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshfoo-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshfoo-02",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1652,12 +1799,15 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"sshrealhost.com": {
 					Name: "sshrealhost.com",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshrealhost.com",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshrealhost.com",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1686,12 +1836,15 @@ func TestLStreamsResolverGlobOnlySSHConfig(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"sshnoport-01": {
 					Name: "sshnoport-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "sshnoport-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "sshnoport-01",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1744,14 +1897,17 @@ func TestLStreamsResolverGlobBothNerdlogAndSSHConfigs(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"foo-01": {
 					Name: "foo-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-01.com",
-							Port: "2001",
-							User: "user-foo-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-01.com",
+								"NLPORT": "2001",
+								"NLUSER": "user-foo-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -1759,10 +1915,13 @@ func TestLStreamsResolverGlobBothNerdlogAndSSHConfigs(t *testing.T) {
 				"foo-02": {
 					Name: "foo-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-foo-from-nerdlog-config-02.com",
-							Port: "2002",
-							User: "user-foo-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-foo-from-nerdlog-config-02.com",
+								"NLPORT": "2002",
+								"NLUSER": "user-foo-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/foolog", "auto"},
@@ -1805,13 +1964,16 @@ func TestLStreamsResolverGlobBothNerdlogAndSSHConfigs(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"bar-01": {
 					Name: "bar-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-bar-from-nerdlog-config-01.com",
-							User: "user-bar-from-nerdlog-config-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-bar-from-nerdlog-config-01.com",
+								"NLUSER": "user-bar-from-nerdlog-config-01",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1819,9 +1981,12 @@ func TestLStreamsResolverGlobBothNerdlogAndSSHConfigs(t *testing.T) {
 				"bar-02": {
 					Name: "bar-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-bar-from-nerdlog-config-02.com",
-							User: "user-bar-from-nerdlog-config-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-bar-from-nerdlog-config-02.com",
+								"NLUSER": "user-bar-from-nerdlog-config-02",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -1864,12 +2029,15 @@ func TestLStreamsResolverGlobBothNerdlogAndSSHConfigs(t *testing.T) {
 					LogFiles: []string{"/from/nerdlog/config/bazlog", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"baz-01": {
 					Name: "baz-01",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "baz-01",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "baz-01",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/bazlog", "auto"},
@@ -1877,8 +2045,11 @@ func TestLStreamsResolverGlobBothNerdlogAndSSHConfigs(t *testing.T) {
 				"baz-02": {
 					Name: "baz-02",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "baz-02",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "baz-02",
+							},
 						},
 					},
 					LogFiles: []string{"/from/nerdlog/config/bazlog", "auto"},
@@ -2012,12 +2183,15 @@ func TestLStreamsResolverLocalhost(t *testing.T) {
 					LogFiles: []string{"auto", "auto"},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"127.0.0.1": {
 					Name: "127.0.0.1",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "127.0.0.1",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "127.0.0.1",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},
@@ -2063,12 +2237,15 @@ func TestLStreamsResolverShellInit(t *testing.T) {
 					},
 				},
 			},
-			wantStreamsSSHBin: map[string]LogStream{
+			wantStreamsCustomCmd: map[string]LogStream{
 				"my-with-shell-init": {
 					Name: "my-with-shell-init",
 					Transport: ConfigLogStreamShellTransport{
-						SSHBin: &ConfigLogStreamShellTransportSSHBin{
-							Host: "host-with-shell-init.com",
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "host-with-shell-init.com",
+							},
 						},
 					},
 					LogFiles: []string{"auto", "auto"},

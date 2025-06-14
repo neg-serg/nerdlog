@@ -5,45 +5,63 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/dimonomid/nerdlog/log"
 	"github.com/juju/errors"
+	"github.com/mvdan/sh/shell"
 )
 
 const echoMarkerConnected = "__CONNECTED__"
 
-// ShellTransportSSHBin is an implementation of ShellTransport that opens an
-// ssh session using external ssh binary.
-type ShellTransportSSHBin struct {
-	params ShellTransportSSHBinParams
+// ShellTransportCustomCmd is an implementation of ShellTransport that opens an
+// shell session using external custom command (such as ssh).
+type ShellTransportCustomCmd struct {
+	params ShellTransportCustomCmdParams
 }
 
-type ShellTransportSSHBinParams struct {
-	Host string
-	User string
-	Port string
+type ShellTransportCustomCmdParams struct {
+	// ShellCommand is a command such as this one:
+	// "ssh -o 'BatchMode=yes' ${NLPORT:+-p ${NLPORT}} ${NLUSER:+${NLUSER}@}${NLHOST} /bin/sh"
+	//
+	// It's interpreted not by an external shell, but https://github.com/mvdan/sh
+	// It can use vars from the EnvOverride below, as well as any env vars.
+	ShellCommand string
+
+	// EnvOverride overrides env vars. Nerdlog sets 3 env vars here:
+	//
+	// - "NLHOST": Hosname, always present;
+	// - "NLPORT": Port, only present if was specified explicitly or was present
+	//   in nerdlog logstreams config.
+	// - "NLUSER": Username, only present if was specified explicitly or was
+	//   present in nerdlog logstreams config.
+	//
+	// An empty value unsets the one from environment, so e.g. if the environment
+	// contains a var FOO=123, but EnvOverride contains they key "FOO" with an
+	// empty string, then it'll be interpreted as if FOO just didn't exist.
+	EnvOverride map[string]string
 
 	Logger *log.Logger
 }
 
-// NewShellTransportSSHBin creates a new ShellTransportSSHBin with the given shell command.
-func NewShellTransportSSHBin(params ShellTransportSSHBinParams) *ShellTransportSSHBin {
-	params.Logger = params.Logger.WithNamespaceAppended("TransportSSHBin")
+// NewShellTransportCustomCmd creates a new ShellTransportCustomCmd with the given shell command.
+func NewShellTransportCustomCmd(params ShellTransportCustomCmdParams) *ShellTransportCustomCmd {
+	params.Logger = params.Logger.WithNamespaceAppended("TransportCustomCmd")
 
-	return &ShellTransportSSHBin{
+	return &ShellTransportCustomCmd{
 		params: params,
 	}
 }
 
 // Connect starts the local shell and sends the result to the provided channel.
-func (s *ShellTransportSSHBin) Connect(resCh chan<- ShellConnUpdate) {
+func (s *ShellTransportCustomCmd) Connect(resCh chan<- ShellConnUpdate) {
 	go s.doConnect(resCh)
 }
 
-func (s *ShellTransportSSHBin) doConnect(
+func (s *ShellTransportCustomCmd) doConnect(
 	resCh chan<- ShellConnUpdate,
 ) (res ShellConnResult) {
 	logger := s.params.Logger
@@ -57,30 +75,29 @@ func (s *ShellTransportSSHBin) doConnect(
 		}
 	}()
 
-	var sshArgs []string
-	if s.params.Port != "" {
-		sshArgs = append(sshArgs, "-p", s.params.Port)
+	// Parse shell commands into separate fields.
+	cmdFields, err := shell.Fields(s.params.ShellCommand, func(varName string) string {
+		if value, ok := s.params.EnvOverride[varName]; ok {
+			return value
+		}
+
+		return os.Getenv(varName)
+	})
+	if err != nil {
+		res.Err = errors.Annotatef(err, "parsing shell command %q", s.params.ShellCommand)
+		return res
 	}
 
-	// We can't easily intercept any prompts for passwords etc, because ssh
-	// interacts directly with the terminal, not stdin/stdout, and so we don't
-	// even try, and instruct ssh to fail instead of prompting.
-	//
-	// We might, in theory, use a PTY like https://github.com/creack/pty, but
-	// it's not gonna be very robust and smells like it might open a can of
-	// worms, so not for now.
-	sshArgs = append(sshArgs, "-o", "BatchMode=yes")
-
-	dest := s.params.Host
-	if s.params.User != "" {
-		dest = fmt.Sprintf("%s@%s", s.params.User, dest)
+	if len(cmdFields) == 0 {
+		res.Err = errors.Errorf("command is empty")
+		return res
 	}
-	sshArgs = append(sshArgs, dest, "/bin/sh")
 
 	var sshCmdDebugBuilder strings.Builder
-	sshCmdDebugBuilder.WriteString("ssh")
-	for _, v := range sshArgs {
-		sshCmdDebugBuilder.WriteString(" ")
+	for i, v := range cmdFields {
+		if i > 0 {
+			sshCmdDebugBuilder.WriteString(" ")
+		}
 		sshCmdDebugBuilder.WriteString(shellQuote(v))
 	}
 	sshCmdDebug := sshCmdDebugBuilder.String()
@@ -90,10 +107,10 @@ func (s *ShellTransportSSHBin) doConnect(
 			"Trying to connect using external command: %q", sshCmdDebug,
 		)),
 	}
-	logger.Infof("Executing external ssh command: %q", sshCmdDebug)
+	logger.Infof("Executing external command: %q", sshCmdDebug)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
+	cmd := exec.CommandContext(ctx, cmdFields[0], cmdFields[1:]...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		res.Err = errors.Annotatef(err, "getting stdin pipe")
@@ -174,7 +191,7 @@ func (s *ShellTransportSSHBin) doConnect(
 		}
 
 		// Got the marker, so we're done.
-		res.Conn = &ShellConnSSHBin{
+		res.Conn = &ShellConnCustomCmd{
 			cmd:    cmd,
 			stdin:  stdin,
 			stdout: clientStdoutR,
@@ -190,13 +207,13 @@ func (s *ShellTransportSSHBin) doConnect(
 	}
 }
 
-func (s *ShellTransportSSHBin) makeDebugInfo(message string) *ShellConnDebugInfo {
+func (s *ShellTransportCustomCmd) makeDebugInfo(message string) *ShellConnDebugInfo {
 	return &ShellConnDebugInfo{
 		Message: message,
 	}
 }
 
-type ShellConnSSHBin struct {
+type ShellConnCustomCmd struct {
 	cmd *exec.Cmd
 
 	stdin  io.WriteCloser
@@ -206,19 +223,19 @@ type ShellConnSSHBin struct {
 	ctxCancel context.CancelFunc
 }
 
-func (s *ShellConnSSHBin) Stdin() io.Writer {
+func (s *ShellConnCustomCmd) Stdin() io.Writer {
 	return s.stdin
 }
 
-func (s *ShellConnSSHBin) Stdout() io.Reader {
+func (s *ShellConnCustomCmd) Stdout() io.Reader {
 	return s.stdout
 }
 
-func (s *ShellConnSSHBin) Stderr() io.Reader {
+func (s *ShellConnCustomCmd) Stderr() io.Reader {
 	return s.stderr
 }
 
-func (s *ShellConnSSHBin) Close() {
+func (s *ShellConnCustomCmd) Close() {
 	// Close stdin; normally this is enough for the external process to finish
 	// gracefully.
 	s.stdin.Close()

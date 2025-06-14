@@ -258,15 +258,14 @@ func createTransport(
 		})
 	}
 
-	if config.SSHBin != nil {
+	if config.CustomCmd != nil {
 		if transport != nil {
 			panic("transport config is ambiguous")
 		}
 
-		transport = NewShellTransportSSHBin(ShellTransportSSHBinParams{
-			Host: config.SSHBin.Host,
-			User: config.SSHBin.User,
-			Port: config.SSHBin.Port,
+		transport = NewShellTransportCustomCmd(ShellTransportCustomCmdParams{
+			ShellCommand: config.CustomCmd.ShellCommand,
+			EnvOverride:  config.CustomCmd.EnvOverride,
 
 			Logger: logger,
 		})

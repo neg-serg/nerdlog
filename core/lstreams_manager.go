@@ -169,16 +169,30 @@ func (lsman *LStreamsManager) setUseExternalSSH(useExternalSSH bool) {
 	lsman.sendStateUpdate()
 }
 
+// DefaultSSHShellCommand is a custom shell command which is used with ssh-bin
+// transport.
+//
+// It's interpreted not by an external shell, but by https://github.com/mvdan/sh.
+//
+// Vars NLHOST, NLPORT and NLUSER are set by the nerdlog internally, but it can
+// also use arbitrary environment vars.
+const DefaultSSHShellCommand = "ssh -o 'BatchMode=yes' ${NLPORT:+-p ${NLPORT}} ${NLUSER:+${NLUSER}@}${NLHOST} /bin/sh"
+
 func (lsman *LStreamsManager) setLStreams(lstreamsStr string) error {
 	u, err := user.Current()
 	if err != nil {
 		return errors.Annotatef(err, "getting current OS user")
 	}
 
+	customShellCommand := ""
+	if lsman.useExternalSSH {
+		customShellCommand = DefaultSSHShellCommand
+	}
+
 	resolver := NewLStreamsResolver(LStreamsResolverParams{
 		CurOSUser: u.Username,
 
-		UseExternalSSH: lsman.useExternalSSH,
+		CustomShellCommand: customShellCommand,
 
 		ConfigLogStreams: lsman.params.ConfigLogStreams,
 		SSHConfig:        lsman.params.SSHConfig,

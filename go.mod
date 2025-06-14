@@ -9,6 +9,7 @@ require (
 	github.com/gobwas/glob v0.2.3
 	github.com/juju/errors v0.0.0-20220324005906-d8c5072c94ab
 	github.com/mattn/go-runewidth v0.0.14
+	github.com/mvdan/sh v2.6.4+incompatible
 	github.com/rivo/tview v0.0.0-20230530133550-8bd761dda819
 	github.com/rivo/uniseg v0.4.3
 	github.com/spf13/pflag v1.0.5
@@ -26,8 +27,10 @@ require (
 	golang.org/x/exp v0.0.0-20190731235908-ec7cb31e5a56 // indirect
 	golang.org/x/image v0.6.0 // indirect
 	golang.org/x/mobile v0.0.0-20230301163155-e0f57694e12c // indirect
+	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
+	mvdan.cc/sh v2.6.4+incompatible // indirect
 )

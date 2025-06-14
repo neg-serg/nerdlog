@@ -19,10 +19,10 @@ type LStreamsResolverParams struct {
 	// determining the user for a particular host connection.
 	CurOSUser string
 
-	// If UseExternalSSH is true, we'll use external ssh binary instead of
-	// internal ssh library (i.e. ShellTransportSSHBin instead of
+	// If CustomShellCommand is non-empty, we'll use that command instead of
+	// internal ssh library (i.e. ShellTransportCustomCmd instead of
 	// ShellTransportSSHLib).
-	UseExternalSSH bool
+	CustomShellCommand string
 
 	// ConfigLogStreams is the nerdlog-specific config, typically coming from
 	// ~/.config/nerdlog/logstreams.yaml.
@@ -70,19 +70,14 @@ type ConfigLogStreamShellTransportSSHLib struct {
 	Jumphost *ConfigHost
 }
 
-// ConfigLogStreamShellTransportSSHBin contains params for the ssh transport
-// using external ssh binary.
-type ConfigLogStreamShellTransportSSHBin struct {
-	// Host is just the hostname, like "myserver.com" or an IP address.
-	Host string
+// ConfigLogStreamShellTransportCustomCmd contains params for the custom
+// shell command transport.
+type ConfigLogStreamShellTransportCustomCmd struct {
+	// See description for ShellTransportCustomCmdParams.ShellCommand
+	ShellCommand string
 
-	// Port is optional: if present, it'll be passed to the ssh binary using
-	// the -p flag, otherwise the -p flag will not be given at all.
-	Port string
-	// User is optional: if present, the destination param to the ssh binary
-	// will be prefixed with "<user>@", otherwise the destination will be just
-	// the Host.
-	User string
+	// See description for ShellTransportCustomCmdParams.EnvOverride
+	EnvOverride map[string]string
 }
 
 type ConfigLogStreamShellTransportLocalhost struct {
@@ -91,7 +86,7 @@ type ConfigLogStreamShellTransportLocalhost struct {
 
 type ConfigLogStreamShellTransport struct {
 	SSHLib    *ConfigLogStreamShellTransportSSHLib
-	SSHBin    *ConfigLogStreamShellTransportSSHBin
+	CustomCmd *ConfigLogStreamShellTransportCustomCmd
 	Localhost *ConfigLogStreamShellTransportLocalhost
 }
 
@@ -326,18 +321,18 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 	lstreams, err = expandFromLogStreamsConfig(
 		lstreams, lsConfigFromSSHConfig, expandOpts{
 			// If using internal ssh library, then expand everything as usual: expand
-			// globs and fill in the missing details. But if using external ssh, then
-			// only expand globs, and leave filling all the missing connection
-			// details up to ssh.
-			skipFillingConnDetails: r.params.UseExternalSSH,
+			// globs and fill in the missing details. But if using external custom
+			// command, then only expand globs, and leave filling all the missing
+			// connection details up to ssh.
+			skipFillingConnDetails: r.params.CustomShellCommand != "",
 		},
 	)
 	if err != nil {
 		return nil, errors.Annotatef(err, "expanding from ssh config")
 	}
 
-	if !r.params.UseExternalSSH {
-		// We're not using external ssh binary, so also try to fill in the
+	if r.params.CustomShellCommand == "" {
+		// We're not using external custom command, so also try to fill in the
 		// details from the parsed ssh config, and then from the defaults too.
 
 		lstreams, err = setLogStreamsConnDefaults(lstreams, r.params.CurOSUser)
@@ -345,13 +340,13 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 			return nil, errors.Annotatef(err, "setting defaults")
 		}
 	} else {
-		// We're using external ssh binary: in this case, we don't fill in the
+		// We're using external custom command: in this case, we don't fill in the
 		// details from ssh config or from the defaults manually, and instead leave
-		// all this up to the external ssh binary.
+		// all this up to the external custom command.
 	}
 
-	// Regardless of the external or internal ssh, we still need to fill in
-	// the default logfiles.
+	// Regardless of the external custom command or internal ssh, we still need
+	// to fill in the default logfiles.
 	lstreams, err = setLogStreamsFileDefaults(lstreams)
 	if err != nil {
 		return nil, errors.Annotatef(err, "setting defaults")
@@ -388,7 +383,7 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 			}
 		} else {
 			// Use ssh
-			if !r.params.UseExternalSSH {
+			if r.params.CustomShellCommand == "" {
 				// Use internal ssh library
 				transport = ConfigLogStreamShellTransport{
 					SSHLib: &ConfigLogStreamShellTransportSSHLib{
@@ -397,17 +392,28 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 					},
 				}
 			} else {
-				// Use external ssh binary
+				// Use external custom command.
 				parsedAddr, err := parseAddr(ls.host.Addr)
 				if err != nil {
-					return nil, errors.Annotatef(err, "parsing addr %s for external ssh binary", ls.host.Addr)
+					return nil, errors.Annotatef(err, "parsing addr %s for external custom command", ls.host.Addr)
+				}
+
+				envOverride := map[string]string{
+					"NLHOST": parsedAddr.host,
+				}
+
+				if parsedAddr.port != "" {
+					envOverride["NLPORT"] = parsedAddr.port
+				}
+
+				if ls.host.User != "" {
+					envOverride["NLUSER"] = ls.host.User
 				}
 
 				transport = ConfigLogStreamShellTransport{
-					SSHBin: &ConfigLogStreamShellTransportSSHBin{
-						Host: parsedAddr.host,
-						Port: parsedAddr.port,
-						User: ls.host.User,
+					CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+						ShellCommand: r.params.CustomShellCommand,
+						EnvOverride:  envOverride,
 					},
 				}
 			}
@@ -481,8 +487,8 @@ type expandOpts struct {
 	// If skipFillingConnDetails is true, then the connection details (host,
 	// port, username) will not be filled from the config. This must be set to
 	// true when the config was parsed from the ssh config and we're using
-	// external ssh binary: in this case, filling all the missing details should
-	// be left up to the external ssh binary.
+	// external custom command: in this case, filling all the missing details
+	// should be left up to that external command.
 	skipFillingConnDetails bool
 }
 
@@ -590,8 +596,8 @@ func expandFromLogStreamsConfig(
 // missing pieces for which it knows the defaults for how to connect to the
 // hosts: port 22, user as the current OS user.
 //
-// Note that it shouldn't be used when we're utilizing external ssh binary:
-// in this case, we want to leave it all up to the ssh.
+// Note that it shouldn't be used when we're utilizing external custom command:
+// in this case, we want to leave it all up to that external command.
 func setLogStreamsConnDefaults(
 	logStreams []draftLogStream,
 	osUser string,
