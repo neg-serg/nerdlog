@@ -12,7 +12,9 @@
   "ConnDetailsByLStream": {
     "testhost-1": {
       "Messages": [
-        "Running local shell /bin/sh"
+        "Trying to connect using external command: \"/bin/sh\"",
+        "Command started, writing \"echo __CONNECTED__\", waiting for it in stdout",
+        "Got the marker, connected successfully"
       ],
       "Err": "",
       "Connected": true

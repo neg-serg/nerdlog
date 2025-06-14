@@ -178,6 +178,9 @@ func (lsman *LStreamsManager) setUseExternalSSH(useExternalSSH bool) {
 // also use arbitrary environment vars.
 const DefaultSSHShellCommand = "ssh -o 'BatchMode=yes' ${NLPORT:+-p ${NLPORT}} ${NLUSER:+${NLUSER}@}${NLHOST} /bin/sh"
 
+// LocalShellCommand is used when the host is "localhost".
+const LocalShellCommand = "/bin/sh"
+
 func (lsman *LStreamsManager) setLStreams(lstreamsStr string) error {
 	u, err := user.Current()
 	if err != nil {

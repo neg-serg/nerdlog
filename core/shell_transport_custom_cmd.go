@@ -31,17 +31,19 @@ type ShellTransportCustomCmdParams struct {
 	// It can use vars from the EnvOverride below, as well as any env vars.
 	ShellCommand string
 
-	// EnvOverride overrides env vars. Nerdlog sets 3 env vars here:
+	// EnvOverride overrides env vars.
+	//
+	// An empty value unsets the one from environment, so e.g. if the environment
+	// contains a var FOO=123, but EnvOverride contains they key "FOO" with an
+	// empty string, then it'll be interpreted as if FOO just didn't exist.
+	//
+	// For non-localhost commands, Nerdlog sets 3 env vars here:
 	//
 	// - "NLHOST": Hosname, always present;
 	// - "NLPORT": Port, only present if was specified explicitly or was present
 	//   in nerdlog logstreams config.
 	// - "NLUSER": Username, only present if was specified explicitly or was
 	//   present in nerdlog logstreams config.
-	//
-	// An empty value unsets the one from environment, so e.g. if the environment
-	// contains a var FOO=123, but EnvOverride contains they key "FOO" with an
-	// empty string, then it'll be interpreted as if FOO just didn't exist.
 	EnvOverride map[string]string
 
 	Logger *log.Logger

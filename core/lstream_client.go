@@ -276,7 +276,9 @@ func createTransport(
 			panic("transport config is ambiguous")
 		}
 
-		transport = NewShellTransportLocal(ShellTransportLocalParams{
+		transport = NewShellTransportCustomCmd(ShellTransportCustomCmdParams{
+			ShellCommand: LocalShellCommand,
+
 			Logger: logger,
 		})
 	}
