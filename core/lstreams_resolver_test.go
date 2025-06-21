@@ -85,6 +85,23 @@ var testConfigLogStreams1 = ConfigLogStreams(map[string]ConfigLogStream{
 			},
 		},
 	},
+
+	"xyz-01": ConfigLogStream{
+		Options: ConfigLogStreamOptions{
+			Transport: "custom:myscript ${NLHOST}",
+		},
+	},
+	"xyz-02": ConfigLogStream{
+		Hostname: "xyz-02-from-lstreams-config",
+		User:     "customuser2",
+		Port:     "7999",
+		Options: ConfigLogStreamOptions{
+			Transport: "custom:myscript ${NLHOST}",
+		},
+	},
+	"xyz-03": ConfigLogStream{
+		Hostname: "xyz-03-from-lstreams-config",
+	},
 })
 
 type resolverTestCase struct {
@@ -105,24 +122,33 @@ type resolverTestCase struct {
 	wantStreams map[string]LogStream
 	// wantStreamsCustomCmd is the expected streams when UseExternalSSH is true. If
 	// nil, then wantStreams will be used (so the expectation is that
-	// UseExternalSSH makes not difference).
+	// UseExternalSSH makes no difference).
 	wantStreamsCustomCmd map[string]LogStream
+
+	// If not nil, customCmdTransport will be used for the resolver which checks
+	// wantStreamsCustomCmd. Otherwise, NewTransportModeSSHBin() is used.
+	customCmdTransport *TransportMode
 }
 
 func runResolverTestCase(t *testing.T, tc resolverTestCase) {
 	t.Helper()
 
 	resolverSSHLib := NewLStreamsResolver(LStreamsResolverParams{
-		CurOSUser:        tc.osUser,
-		ConfigLogStreams: tc.configLogStreams,
-		SSHConfig:        tc.sshConfig,
+		CurOSUser:            tc.osUser,
+		DefaultTransportMode: NewTransportModeSSHLib(),
+		ConfigLogStreams:     tc.configLogStreams,
+		SSHConfig:            tc.sshConfig,
 	})
 
+	customCmdTransport := tc.customCmdTransport
+	if customCmdTransport == nil {
+		customCmdTransport = NewTransportModeSSHBin()
+	}
 	resolverCustomCmd := NewLStreamsResolver(LStreamsResolverParams{
-		CurOSUser:          tc.osUser,
-		CustomShellCommand: DefaultSSHShellCommand,
-		ConfigLogStreams:   tc.configLogStreams,
-		SSHConfig:          tc.sshConfig,
+		CurOSUser:            tc.osUser,
+		DefaultTransportMode: customCmdTransport,
+		ConfigLogStreams:     tc.configLogStreams,
+		SSHConfig:            tc.sshConfig,
 	})
 
 	gotStreamsSSHLib, err := resolverSSHLib.Resolve(tc.input)
@@ -2254,6 +2280,163 @@ func TestLStreamsResolverShellInit(t *testing.T) {
 							"export TZ=UTC",
 						},
 					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResolverTestCase(t, tt)
+		})
+	}
+}
+
+func TestLStreamsResolverTransportCustomCmd(t *testing.T) {
+	tests := []resolverTestCase{
+		{
+			name:   "simple ",
+			osUser: "osuser",
+
+			configLogStreams: testConfigLogStreams1,
+			sshConfig:        testSSHConfig1,
+
+			input: "xyz-*",
+
+			wantStreams: map[string]LogStream{
+				"xyz-01": {
+					Name: "xyz-01",
+					Transport: ConfigLogStreamShellTransport{
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: "myscript ${NLHOST}",
+							EnvOverride: map[string]string{
+								"NLHOST": "xyz-01",
+								// No details are filled from ssh config since it uses a custom
+								// transport command.
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
+				},
+				"xyz-02": {
+					Name: "xyz-02",
+					Transport: ConfigLogStreamShellTransport{
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: "myscript ${NLHOST}",
+							EnvOverride: map[string]string{
+								"NLHOST": "xyz-02-from-lstreams-config",
+								"NLUSER": "customuser2",
+								"NLPORT": "7999",
+								// No details are filled from ssh config since it uses a custom
+								// transport command.
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
+				},
+				"xyz-03": {
+					Name: "xyz-03",
+					Transport: ConfigLogStreamShellTransport{
+						SSHLib: &ConfigLogStreamShellTransportSSHLib{
+							Host: ConfigHost{
+								// Since we use ssh lib, all the details (host, port, user)
+								// should be taken from the ssh config.
+								Addr: "xyz-03-from-ssh-config:8000",
+								User: "user-from-ssh-config",
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
+				},
+			},
+			wantStreamsCustomCmd: map[string]LogStream{
+				"xyz-01": {
+					Name: "xyz-01",
+					Transport: ConfigLogStreamShellTransport{
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: "myscript ${NLHOST}",
+							EnvOverride: map[string]string{
+								"NLHOST": "xyz-01",
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
+				},
+				"xyz-02": {
+					Name: "xyz-02",
+					Transport: ConfigLogStreamShellTransport{
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: "myscript ${NLHOST}",
+							EnvOverride: map[string]string{
+								"NLHOST": "xyz-02-from-lstreams-config",
+								"NLUSER": "customuser2",
+								"NLPORT": "7999",
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
+				},
+				"xyz-03": {
+					Name: "xyz-03",
+					Transport: ConfigLogStreamShellTransport{
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							ShellCommand: DefaultSSHShellCommand,
+							EnvOverride: map[string]string{
+								"NLHOST": "xyz-03-from-lstreams-config",
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResolverTestCase(t, tt)
+		})
+	}
+}
+
+func TestLStreamsResolverCustomTransport(t *testing.T) {
+	tests := []resolverTestCase{
+		{
+			name:   "simple hostname only",
+			osUser: "osuser",
+			input:  "myserver.com",
+
+			// Key thing here
+			customCmdTransport: NewTransportModeCustom("my custom command ${NLHOST}"),
+
+			wantStreams: map[string]LogStream{
+				"myserver.com": {
+					Name: "myserver.com",
+					Transport: ConfigLogStreamShellTransport{
+						SSHLib: &ConfigLogStreamShellTransportSSHLib{
+							Host: ConfigHost{
+								Addr: "myserver.com:22",
+								User: "osuser",
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
+				},
+			},
+			wantStreamsCustomCmd: map[string]LogStream{
+				"myserver.com": {
+					Name: "myserver.com",
+					Transport: ConfigLogStreamShellTransport{
+						CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
+							// Key thing here
+							ShellCommand: "my custom command ${NLHOST}",
+
+							EnvOverride: map[string]string{
+								"NLHOST": "myserver.com",
+							},
+						},
+					},
+					LogFiles: []string{"auto", "auto"},
 				},
 			},
 		},

@@ -3,6 +3,7 @@ descr: ""
 scenario_params:
   config_log_streams:
     testhost-01:
+      hostname: "localhost"
       log_files:
         kind: all_from_dir
         dir: ../../input_logfiles/small_mar

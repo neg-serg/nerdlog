@@ -3,7 +3,7 @@ descr: ""
 scenario_params:
   config_log_streams:
     testhost-01:
-      hostname: "localhost"
+      hostname: "127.0.0.1"
       log_files:
         kind: all_from_dir
         dir: ../../input_logfiles/small_mar
@@ -19,7 +19,7 @@ test_steps:
   - descr: "start up"
     send_keys: [
         'NERDLOG_NO_CLIPBOARD=1 TZ=UTC',
-        ' ${NERDLOG_BINARY} --lstreams-config ${NERDLOG_LOGSTREAMS_CONFIG_FILE} --cmdhistory-file ${NERDLOG_TEST_OUTPUT_DIR}/cmd_history --queryhistory-file ${NERDLOG_TEST_OUTPUT_DIR}/query_history --set numlines=500',
+        ' ${NERDLOG_BINARY} --lstreams-config ${NERDLOG_LOGSTREAMS_CONFIG_FILE} --cmdhistory-file ${NERDLOG_TEST_OUTPUT_DIR}/cmd_history --queryhistory-file ${NERDLOG_TEST_OUTPUT_DIR}/query_history --set ''transport=custom:/bin/sh -c "/bin/sh -c sh"''',
         'C-m',
       ]
     want_screen_snapshot:
@@ -53,13 +53,36 @@ test_steps:
         - pattern:     'Query took: .{1,10}'
           replacement: 'Query took: XXXXXXXXXX'
 
-  - descr: "get current value of numlines"
+  - descr: "get current value of transport"
     send_keys: [
-        ':set numlines?',
+        ':set transport?',
         'C-m',
       ]
     want_screen_snapshot:
-      snapshot: want_screen_03_get_numlines.txt
+      snapshot: want_screen_03_get_transport.txt
       substitutions:
         - pattern:     'Query took: .{1,10}'
           replacement: 'Query took: XXXXXXXXXX'
+
+  - descr: "set a different transport"
+    send_keys: [
+        ':set transport=custom:/bin/sh -c sh',
+        'C-m',
+      ]
+    want_screen_snapshot:
+      snapshot: want_screen_04_get_transport.txt
+      substitutions:
+        - pattern:     'Query took: .{1,10}'
+          replacement: 'Query took: XXXXXXXXXX'
+
+  - descr: "get current value of transport again"
+    send_keys: [
+        ':set transport?',
+        'C-m',
+      ]
+    want_screen_snapshot:
+      snapshot: want_screen_05_get_transport.txt
+      substitutions:
+        - pattern:     'Query took: .{1,10}'
+          replacement: 'Query took: XXXXXXXXXX'
+

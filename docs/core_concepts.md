@@ -152,6 +152,20 @@ log_streams:
         - 'some other command'
 ```
 
+### Overriding the transport
+
+One more extra option for a logstream is `transport`, which has exactly the same syntax as the `:set transport` global option, but affects just a single logstream. Example:
+
+```yaml
+log_streams:
+  myhost-01:
+    # ... Potentially any other configuration for the logstream
+    options:
+      transport: 'custom:ssh -o BatchMode=yes ${NLPORT:+-p ${NLPORT}} ${NLUSER:+${NLUSER}@}${NLHOST} /bin/sh'
+```
+
+Refer to [Options documentation](./options.md) for more details on the custom transport command syntax etc.
+
 ## Query
 
 A Nerdlog query consists of 3 primary components and 1 extra:

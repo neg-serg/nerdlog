@@ -33,6 +33,7 @@ type E2ETestScenarioYaml struct {
 
 // E2ETestConfigLogStream converts to ConfigLogStream (from config.go)
 type E2ETestConfigLogStream struct {
+	Hostname string                     `yaml:"hostname"`
 	LogFiles testutils.TestCaseLogfiles `yaml:"log_files"`
 
 	Options core.ConfigLogStreamOptions `yaml:"options"`
@@ -291,7 +292,7 @@ func newE2ETestHelper(
 		}
 
 		cfgLogStreams[lstreamName] = core.ConfigLogStream{
-			Hostname: "localhost",
+			Hostname: testCfg.Hostname,
 			LogFiles: []string{
 				provisioned.LogfileLast,
 				provisioned.LogfilePrev,

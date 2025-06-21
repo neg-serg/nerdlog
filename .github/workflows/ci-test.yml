@@ -19,8 +19,14 @@ jobs:
         run: |
           sudo apt install -y libx11-dev
 
-      - name: Run tests
+      - name: Run main tests
         run: make test
+
+      - name: Run core tests with custom transport command
+        run: |
+          NERDLOG_CORE_TEST_HOSTNAME='127.0.0.1' \
+            NERDLOG_CORE_TEST_TRANSPORT='custom:/bin/sh -c "/bin/sh -c sh"' \
+            make test ARGS='-run TestCoreScenarios'
 
   test-freebsd:
     name: Tests (FreeBSD)
@@ -45,7 +51,13 @@ jobs:
             # So here we work it around by marking the directory as safe.
             git config --global --add safe.directory "${PWD}"
 
+            echo "Run main tests"
             make test
+
+            echo "Run core tests with custom transport command"
+            NERDLOG_CORE_TEST_HOSTNAME='127.0.0.1' \
+              NERDLOG_CORE_TEST_TRANSPORT='custom:/bin/sh -c "/bin/sh -c sh"' \
+              make test ARGS='-run TestCoreScenarios'
 
   test-macos:
     name: Tests (MacOS)
@@ -63,8 +75,14 @@ jobs:
           brew update
           brew install gawk tmux
 
-      - name: Run tests
+      - name: Run main tests
         run: make test
+
+      - name: Run core tests with custom transport command
+        run: |
+          NERDLOG_CORE_TEST_HOSTNAME='127.0.0.1' \
+            NERDLOG_CORE_TEST_TRANSPORT='custom:/bin/sh -c "/bin/sh -c sh"' \
+            make test ARGS='-run TestCoreScenarios'
 
   test-ubuntu-ssh:
     name: Core tests via SSH
@@ -120,4 +138,4 @@ jobs:
           NERDLOG_CORE_TEST_HOSTNAME='127.0.0.1' make test ARGS='-run TestCoreScenarios'
 
           echo "Running tests with ssh-bin"
-          NERDLOG_CORE_TEST_HOSTNAME='127.0.0.1' NERDLOG_CORE_TEST_TRANSPORT_SSH_BIN=1 make test ARGS='-run TestCoreScenarios'
+          NERDLOG_CORE_TEST_HOSTNAME='127.0.0.1' NERDLOG_CORE_TEST_TRANSPORT=ssh-bin make test ARGS='-run TestCoreScenarios'

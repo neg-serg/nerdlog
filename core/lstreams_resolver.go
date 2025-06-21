@@ -19,10 +19,9 @@ type LStreamsResolverParams struct {
 	// determining the user for a particular host connection.
 	CurOSUser string
 
-	// If CustomShellCommand is non-empty, we'll use that command instead of
-	// internal ssh library (i.e. ShellTransportCustomCmd instead of
-	// ShellTransportSSHLib).
-	CustomShellCommand string
+	// DefaultTransportMode will be used for all logstreams which don't explicitly
+	// define transport.
+	DefaultTransportMode *TransportMode
 
 	// ConfigLogStreams is the nerdlog-specific config, typically coming from
 	// ~/.config/nerdlog/logstreams.yaml.
@@ -212,7 +211,7 @@ type draftLogStream struct {
 	host     ConfigHost
 	jumphost *ConfigHost
 	logFiles []string
-	options  LogStreamOptions
+	options  ConfigLogStreamOptions
 }
 
 // parseLogStreamSpecEntry parses a single logstream spec entry like
@@ -306,10 +305,27 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 
 	// Expand from nerdlog config.
 	lstreams, err = expandFromLogStreamsConfig(
-		lstreams, r.params.ConfigLogStreams, expandOpts{},
+		lstreams, r.params.ConfigLogStreams,
 	)
 	if err != nil {
 		return nil, errors.Annotatef(err, "expanding from nerdlog config")
+	}
+
+	// Now that we filled things from the nerdlog logstreams config, we should
+	// set the default transport mode for all the logstreams which didn't have it
+	// specified explicitly in the config.
+	//
+	// We must do it before expanding things from the ssh config, because
+	// expandFromLogStreamsConfig's behavior depends on the Transport: if it's
+	// empty or "ssh-lib", then it'll expand connection details (host, port and
+	// user); otherwise these connection details will be left intact even if
+	// they're empty, because we want to leave all this to whatever external
+	// command we'll be using for the transport.
+	defaultTransportSpec := r.params.DefaultTransportMode.String()
+	for i := range lstreams {
+		if lstreams[i].options.Transport == "" {
+			lstreams[i].options.Transport = defaultTransportSpec
+		}
 	}
 
 	// Expand from ssh config.
@@ -319,34 +335,17 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 	}
 
 	lstreams, err = expandFromLogStreamsConfig(
-		lstreams, lsConfigFromSSHConfig, expandOpts{
-			// If using internal ssh library, then expand everything as usual: expand
-			// globs and fill in the missing details. But if using external custom
-			// command, then only expand globs, and leave filling all the missing
-			// connection details up to ssh.
-			skipFillingConnDetails: r.params.CustomShellCommand != "",
-		},
+		lstreams, lsConfigFromSSHConfig,
 	)
 	if err != nil {
 		return nil, errors.Annotatef(err, "expanding from ssh config")
 	}
 
-	if r.params.CustomShellCommand == "" {
-		// We're not using external custom command, so also try to fill in the
-		// details from the parsed ssh config, and then from the defaults too.
-
-		lstreams, err = setLogStreamsConnDefaults(lstreams, r.params.CurOSUser)
-		if err != nil {
-			return nil, errors.Annotatef(err, "setting defaults")
-		}
-	} else {
-		// We're using external custom command: in this case, we don't fill in the
-		// details from ssh config or from the defaults manually, and instead leave
-		// all this up to the external custom command.
+	// Set defaults.
+	lstreams, err = setLogStreamsConnDefaults(lstreams, r.params.CurOSUser)
+	if err != nil {
+		return nil, errors.Annotatef(err, "setting defaults")
 	}
-
-	// Regardless of the external custom command or internal ssh, we still need
-	// to fill in the default logfiles.
 	lstreams, err = setLogStreamsFileDefaults(lstreams)
 	if err != nil {
 		return nil, errors.Annotatef(err, "setting defaults")
@@ -382,8 +381,13 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 				Localhost: &ConfigLogStreamShellTransportLocalhost{},
 			}
 		} else {
+			tm, err := ParseTransportMode(ls.options.Transport)
+			if err != nil {
+				return nil, errors.Annotatef(err, "parsing transport mode for %s", ls.name)
+			}
+
 			// Use ssh
-			if r.params.CustomShellCommand == "" {
+			if tm.Kind() == TransportModeKindSSHLib {
 				// Use internal ssh library
 				transport = ConfigLogStreamShellTransport{
 					SSHLib: &ConfigLogStreamShellTransportSSHLib{
@@ -412,7 +416,7 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 
 				transport = ConfigLogStreamShellTransport{
 					CustomCmd: &ConfigLogStreamShellTransportCustomCmd{
-						ShellCommand: r.params.CustomShellCommand,
+						ShellCommand: tm.CustomShellCommand(),
 						EnvOverride:  envOverride,
 					},
 				}
@@ -423,7 +427,10 @@ func (r *LStreamsResolver) parseLogStreamSpecEntry(s string) ([]LogStream, error
 			Name:      ls.name,
 			Transport: transport,
 			LogFiles:  ls.logFiles,
-			Options:   ls.options,
+			Options: LogStreamOptions{
+				SudoMode:  ls.options.SudoMode,
+				ShellInit: ls.options.ShellInit,
+			},
 		})
 	}
 
@@ -483,21 +490,11 @@ type ConfigLogStreamWKey struct {
 	ConfigLogStream
 }
 
-type expandOpts struct {
-	// If skipFillingConnDetails is true, then the connection details (host,
-	// port, username) will not be filled from the config. This must be set to
-	// true when the config was parsed from the ssh config and we're using
-	// external custom command: in this case, filling all the missing details
-	// should be left up to that external command.
-	skipFillingConnDetails bool
-}
-
 // expandFromLogStreamsConfig goes through each of the logstreams, and
 // potentially expands every item as per the provided config.
 func expandFromLogStreamsConfig(
 	logStreams []draftLogStream,
 	lsConfig ConfigLogStreams,
-	opts expandOpts,
 ) ([]draftLogStream, error) {
 	// If there's no config, cut it short.
 	if lsConfig == nil {
@@ -543,7 +540,7 @@ func expandFromLogStreamsConfig(
 			// Always override the name with the key from the config.
 			lsCopy.name = strings.Replace(lsCopy.name, globPattern, matchedItem.Key, -1)
 
-			if !opts.skipFillingConnDetails {
+			if lsCopy.options.Transport == "" || lsCopy.options.Transport == "ssh-lib" {
 				// Overwrite the host address (since what we've had might be a glob):
 				// either with the Hostname if it's specified explicitly, or if not, then
 				// with the item key.
@@ -563,9 +560,9 @@ func expandFromLogStreamsConfig(
 					lsCopy.host.User = matchedItem.User
 				}
 			} else {
-				// We're asked to skip filling conn details, so just replace the host
-				// with the matched item's key (because or original host might have
-				// been a glob), and leave the port and user as is.
+				// Transport is using some external command, so we don't fill in port
+				// etc, but we still replace the host with the matched item's key
+				// (because or original host might have been a glob)
 				addrCopy.host = matchedItem.Key
 			}
 
@@ -577,6 +574,10 @@ func expandFromLogStreamsConfig(
 
 			if lsCopy.options.ShellInit == nil {
 				lsCopy.options.ShellInit = matchedItem.Options.ShellInit
+			}
+
+			if lsCopy.options.Transport == "" {
+				lsCopy.options.Transport = matchedItem.Options.Transport
 			}
 
 			if len(lsCopy.logFiles) == 0 {
@@ -605,17 +606,22 @@ func setLogStreamsConnDefaults(
 	ret := make([]draftLogStream, 0, len(logStreams))
 
 	for i, ls := range logStreams {
-		port, err := portFromAddr(ls.host.Addr)
-		if err != nil {
-			return nil, errors.Annotatef(err, "logstream #%d, getting port", i+1)
-		}
+		// Only fill in default port and user if the custom transport command is
+		// not set; because if it's set, we'll want to defer all the defaults to
+		// that external command.
+		if ls.options.Transport == "ssh-lib" {
+			port, err := portFromAddr(ls.host.Addr)
+			if err != nil {
+				return nil, errors.Annotatef(err, "logstream #%d, getting port", i+1)
+			}
 
-		if port == "" {
-			ls.host.Addr += "22"
-		}
+			if port == "" {
+				ls.host.Addr += "22"
+			}
 
-		if ls.host.User == "" {
-			ls.host.User = osUser
+			if ls.host.User == "" {
+				ls.host.User = osUser
+			}
 		}
 
 		ret = append(ret, ls)

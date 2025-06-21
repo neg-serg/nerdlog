@@ -70,3 +70,5 @@ test_steps:
         127.0.0.1_ssh-lib: want_conn_info_127.0.0.1_sshlib.txt
         # 127.0.0.1 with ssh-bin transport
         127.0.0.1_ssh-bin: want_conn_info_127.0.0.1_sshbin.txt
+        # 127.0.0.1 with custom transport
+        "127.0.0.1_custom:/bin/sh -c \"/bin/sh -c sh\"": want_conn_info_127.0.0.1_custom_bin_sh_sh.txt

@@ -31,6 +31,8 @@ It does support some other log formats and can use any log files, but that was t
   then merges the responses from all nodes together, and presents to the user
   in a unified form;
 - Most of the data is gzipped in transit, thus saving the bandwidth as well.
+- Supports arbitrary command to establish shell session with the remote hosts,
+  so can be used with Teleport or other similar tools.
 
 ## Demo
 

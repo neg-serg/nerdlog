@@ -85,7 +85,8 @@ func (app *nerdlogApp) handleCmd(cmd string) {
 			return
 		}
 
-		setRes, err := app.setOption(parts[1])
+		remaining := strings.TrimSpace(cmd[len(parts[0]):])
+		setRes, err := app.setOption(remaining)
 		if err != nil {
 			app.printError(capitalizeFirstRune(err.Error()))
 		}
