@@ -4,7 +4,7 @@ awk pattern:                                                     Mar9 15:00 to M
                                    ▌
                                    ▌                                                                    ▗
     ▄▄▄▄▟▟▄▄▄▙▙█▙▙▙▟▄▄▄▄▄▄▄▄▄▟▄█▄▙▄▙▄▟▙▟▟▄▄▟▄▄▟▟▄▟▙▄▙▄▄▄▄▙▄▄▄▄▄▟▄▙▟▙▙▄▄▄▄▙▄▄▄▄▄▄▄▟▄▄▄▟▄▄▙▙▙▄▙▄▄▄▄▄▄█▄▄▄▄▟▄
-                 ▝ Mar10           ▝ 12:00           ▝ Mar11           ▝ 12:00           ▝ Mar12  ^
+                 ▝ Mar10           ▝ 12:00           ▝ Mar11           ▝ 12:00  ^        ▝ Mar12
 time (UTC)         lstream     message                                   hostname pid  program
     < MOAR ! >
 Mar11 18:07:20.000 testhost-01 <notice> Service dependency initialized   myhost   2299 auth

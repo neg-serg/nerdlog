@@ -703,6 +703,16 @@ func NewMainView(params *MainViewParams) *MainView {
 		})
 		rdv.Show()
 	}).SetSelectionChangedFunc(func(row, column int) {
+		// It looks like a bug in tview, but for some reason, the row might be 0
+		// (when we simply press Up or k while already being at the top, or by
+		// pressing Home or g), even though actually the first usable row index
+		// in a table is 1.
+		//
+		// So here we replace 0 with 1.
+		if row == 0 {
+			row = 1
+		}
+
 		mv.bumpStatusLineRight()
 		mv.bumpHistogramExternalCursor(row)
 	})
@@ -1553,6 +1563,7 @@ func (mv *MainView) bumpHistogramExternalCursor(row int) {
 	if !ok {
 		return
 	}
+
 	mv.histogram.SetExternalCursor(int(msg.Time.Unix()))
 }
 
