@@ -12,3 +12,4 @@ It's laser-focused on being efficient while querying logs from multiple remote m
 - [Tests](./tests.md)
 - [FAQ](./faq.md)
 - [Troubleshooting](./troubleshooting.md)
+ - Installation: see README → [Using Nix](../README.md#using-nix)

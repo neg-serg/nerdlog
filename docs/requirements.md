@@ -18,3 +18,10 @@ Nerdlog agent relies on a bunch of standard tools to be present on the hosts, su
 
   * Gawk (GNU awk) is a requirement, since nerlog relies on the `-b` option, to treat the data as bytes, not chars. Technically could be worked around, but will be significantly slower on big log files (slower not because awk is slower without `-b`, but because we'll have to deal with the line numbers instead of byte offsets everywhere, and when we're querying a certain timeframe, it's much more effective to say "get the last 10000000 bytes from this file" instead of "get the last 100000 lines from that file"). So notably, `mawk` will not work. You need `gawk`.
   * A bunch of timestamp formats are supported, and more can be added, but the primary limitation so far is that timestamp must be the first thing in every log line (or at the very least, every component of the timestamp should be at a stable offset from the beginning of the line).
+
+## Installation
+
+You can install or develop Nerdlog in two common ways. See README for full commands.
+
+- Nix: use the included flake. Build with `nix build`, run with `nix run`, and open a dev shell with `nix develop`. On Linux, CGO is enabled and X11 libs are provided for clipboard support.
+- Go/Make: install with `go install github.com/dimonomid/nerdlog/cmd/nerdlog@latest` or build locally via `make` (and `sudo make install` to install). Refer to README for platform-specific notes.

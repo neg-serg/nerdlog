@@ -107,6 +107,33 @@ Or to build and run without installing:
 $ make && bin/nerdlog
 ```
 
+### Using Nix
+
+If you use Nix, the repo contains a flake with packaging and a dev shell.
+
+Build the binary:
+
+```
+nix build
+```
+
+Run directly (uses the flake app):
+
+```
+nix run
+```
+
+Open a development shell with Go toolchain and deps:
+
+```
+nix develop
+```
+
+Notes:
+
+- On Linux, CGO is enabled to support clipboard; X11 libs are provided by the flake.
+- On non-Linux platforms, CGO is disabled by default.
+
 ## Usage
 
 When you open the app (`nerdlog` binary), it'll show a query edit form with a
